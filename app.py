@@ -8,7 +8,7 @@ from io import BytesIO
 
 def modificar_estrategia_escalado_gerard(content, filename):
     """
-    Modifica contenido de estrategia MQL5 para añadir gestión de riesgo por niveles
+    Modifica contenido de estrategia MQL5 para añadir gestión de riesgo por niveles - VERSIÓN CORREGIDA
     """
     # Evita modificar un archivo que ya ha sido procesado
     if "Risk Management (Precise Level Scaling)" in content:
@@ -25,7 +25,7 @@ def modificar_estrategia_escalado_gerard(content, filename):
     content = content.replace("0.5f", "0.5")
     content = content.replace("10.0f", "10.0")
 
-    # Bloques de código MQL5
+    # Bloques de código MQL5 CORREGIDOS
     risk_management_inputs = """
     //+------------------------------------------------------------------+
     //| Risk Management (Precise Level Scaling) by Python Script
@@ -109,23 +109,24 @@ def modificar_estrategia_escalado_gerard(content, filename):
     }
     """
 
-    lot_size_calculation_logic = """
-          // --- Cálculo de Gestión de Riesgo por Niveles ---
-          if(g_currentTradeLevel < 1 || g_currentTradeLevel > ArraySize(g_riskLevels))
-          {
-             g_currentTradeLevel = 1; 
-             GlobalVariableSet(g_gv_tradeLevel_key, g_currentTradeLevel);
-          }
-          
-          double riskPercentForTrade = g_riskLevels[g_currentTradeLevel - 1];
-          
-          double moneyToRisk = (initialBalance * riskPercentForTrade) / 100.0;
-          VerboseLog("GESTION POR NIVELES: Nivel actual: ", IntegerToString(g_currentTradeLevel), ". Arriesgando: ", DoubleToString(riskPercentForTrade, 2), "%. Dinero máximo a arriesgar: ", DoubleToString(moneyToRisk, 2));
-          
-          size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,moneyToRisk,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier,mmStep);"""
+    # LÓGICA CORREGIDA para el cálculo del tamaño del lote
+    lot_size_calculation_logic = """      // --- Cálculo de Gestión de Riesgo por Niveles ---
+      if(g_currentTradeLevel < 1 || g_currentTradeLevel > ArraySize(g_riskLevels))
+      {
+         g_currentTradeLevel = 1; 
+         GlobalVariableSet(g_gv_tradeLevel_key, g_currentTradeLevel);
+      }
+      
+      double riskPercentForTrade = g_riskLevels[g_currentTradeLevel - 1];
+      
+      double moneyToRisk = (initialBalance * riskPercentForTrade) / 100.0;
+      VerboseLog("GESTION POR NIVELES: Nivel actual: ", IntegerToString(g_currentTradeLevel), ". Arriesgando: ", DoubleToString(riskPercentForTrade, 2), "%. Dinero máximo a arriesgar: ", DoubleToString(moneyToRisk, 2));
+      
+      size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,moneyToRisk,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier);"""
 
+    # FUNCIÓN CORREGIDA sqMMFixedAmount sin el parámetro problemático mmStep
     precise_mm_function = """
-    double sqMMFixedAmount(string symbol, ENUM_ORDER_TYPE orderType, double price, double sl, double RiskedMoney, int decimals, double LotsIfNoMM, double MaximumLots, double multiplier, double sizeStep) {
+    double sqMMFixedAmount(string symbol, ENUM_ORDER_TYPE orderType, double price, double sl, double RiskedMoney, int decimals, double LotsIfNoMM, double MaximumLots, double multiplier) {
     Verbose("Computing Money Management for order - Precise amount");
     
     if(UseMoneyManagement == false) {
@@ -147,6 +148,7 @@ def modificar_estrategia_escalado_gerard(content, filename):
     double PointValue = SymbolInfoDouble(correctedSymbol, SYMBOL_TRADE_TICK_VALUE) / SymbolInfoDouble(correctedSymbol, SYMBOL_TRADE_TICK_SIZE); 
     double Smallest_Lot = SymbolInfoDouble(correctedSymbol, SYMBOL_VOLUME_MIN);
     double Largest_Lot = SymbolInfoDouble(correctedSymbol, SYMBOL_VOLUME_MAX);    
+    double LotStep = SymbolInfoDouble(correctedSymbol, SYMBOL_VOLUME_STEP);
     
     if (PointValue <= 0 || MathAbs(openPrice - sl) <= 0) {
         Verbose("Cannot calculate lot size: Point value or SL distance is zero. Using default lot size.");
@@ -162,11 +164,12 @@ def modificar_estrategia_escalado_gerard(content, filename):
         LotSize = 0;
     }
 
-        LotSize = LotSize * multiplier;
-        
-        if(sizeStep > 0) {
-            LotSize = MathFloor(LotSize / sizeStep) * sizeStep;
-        }
+    LotSize = LotSize * multiplier;
+    
+    // Redondear al step correcto
+    if(LotStep > 0) {
+        LotSize = MathFloor(LotSize / LotStep) * LotStep;
+    }
 
     Verbose("Computing Money Management - Smallest_Lot: ", DoubleToString(Smallest_Lot), ", Largest_Lot: ", DoubleToString(Largest_Lot), ", Computed LotSize: ", DoubleToString(LotSize, 8));
     Verbose("Money to risk: ", DoubleToString(RiskedMoney), ", Max 1 lot trade drawdown: ", DoubleToString(oneLotSLDrawdown), ", Point value: ", DoubleToString(PointValue));
@@ -174,7 +177,7 @@ def modificar_estrategia_escalado_gerard(content, filename):
     if(LotSize <= 0) {
         Verbose("Calculated LotSize is <= 0. Using LotsIfNoMM value: ", DoubleToString(LotsIfNoMM), ")");
         LotSize = LotsIfNoMM;
-        }                              
+    }                              
 
     if (LotSize < Smallest_Lot) {
         Verbose("Calculated LotSize is too small (", DoubleToString(LotSize,8), "). Minimal allowed is ", DoubleToString(Smallest_Lot), ". Trade will be skipped.");
@@ -194,6 +197,7 @@ def modificar_estrategia_escalado_gerard(content, filename):
     }"""
 
     # Aplicar modificaciones
+    # 1. Reemplazar la función sqMMFixedAmount existente
     content = re.sub(
         r"double sqMMFixedAmount\(string symbol,.*?\)\s*{.*?^}",
         lambda m: precise_mm_function,
@@ -201,6 +205,7 @@ def modificar_estrategia_escalado_gerard(content, filename):
         flags=re.DOTALL | re.MULTILINE,
     )
 
+    # 2. Agregar las variables de input para gestión de riesgo
     target_for_inputs = (
         'input string smm = "----------- Money Management - Fixed Amount -----------";'
     )
@@ -208,20 +213,45 @@ def modificar_estrategia_escalado_gerard(content, filename):
         target_for_inputs, risk_management_inputs + "\n" + target_for_inputs
     )
 
-    target_for_oninit = "   return(INIT_SUCCEEDED);"
+    # 3. Agregar inicialización en OnInit
+    target_for_oninit = "      return(INIT_SUCCEEDED);"
     content = content.replace(
         target_for_oninit, on_init_addition + "\n\n   " + target_for_oninit
     )
 
-    original_lot_calc_line = 'size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,mmRiskedMoney,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier,mmStep);'
-    match = re.search(r"(\s*)" + re.escape(original_lot_calc_line), content)
-    if match:
-        indentation = match.group(1)
-        indented_logic = "\n".join(
-            [indentation + line for line in lot_size_calculation_logic.split("\n")]
-        )
-        content = content.replace(indentation + original_lot_calc_line, indented_logic)
+    # 4. Reemplazar el cálculo del tamaño del lote - MÚLTIPLES PATRONES POSIBLES
+    original_patterns = [
+        'size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,mmRiskedMoney,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier,mmStep);',
+        'size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,mmRiskedMoney,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier);',
+        'size = sqMMFixedAmount("Current", ORDER_TYPE_BUY, openPrice, sl, mmRiskedMoney, mmDecimals, mmLotsIfNoMM, mmMaxLots, mmMultiplier, mmStep);',
+        'size = sqMMFixedAmount("Current", ORDER_TYPE_BUY, openPrice, sl, mmRiskedMoney, mmDecimals, mmLotsIfNoMM, mmMaxLots, mmMultiplier);'
+    ]
+    
+    replaced = False
+    for pattern in original_patterns:
+        if pattern in content:
+            match = re.search(r"(\s*)" + re.escape(pattern), content)
+            if match:
+                indentation = match.group(1)
+                indented_logic = "\n".join(
+                    [indentation + line for line in lot_size_calculation_logic.split("\n")]
+                )
+                content = content.replace(indentation + pattern, indented_logic)
+                replaced = True
+                break
+    
+    if not replaced:
+        # Patrón más flexible para capturar variaciones
+        pattern = r'(\s*)size\s*=\s*sqMMFixedAmount\s*\([^;]+\);'
+        match = re.search(pattern, content)
+        if match:
+            indentation = match.group(1)
+            indented_logic = "\n".join(
+                [indentation + line for line in lot_size_calculation_logic.split("\n")]
+            )
+            content = re.sub(pattern, indented_logic, content)
 
+    # 5. Agregar la función OnTradeTransaction
     first_include_marker = "//+----------------------------- Include from"
     if first_include_marker in content:
         content = content.replace(
@@ -232,7 +262,7 @@ def modificar_estrategia_escalado_gerard(content, filename):
     else:
         content += "\n\n" + on_trade_transaction_function
 
-    return content, "Estrategia modificada con éxito - Escalado Preciso"
+    return content, "Estrategia modificada con éxito - Escalado Preciso CORREGIDO"
 
 
 def modificar_estrategia_benjamin(content, filename):
@@ -347,8 +377,7 @@ def modificar_estrategia_benjamin(content, filename):
     }
     """
 
-    lot_size_calculation_logic = """
-    // --- Cálculo de Gestión de Riesgo Dinámico ---
+    lot_size_calculation_logic = """    // --- Cálculo de Gestión de Riesgo Dinámico ---
     double riskPercentForTrade = g_currentRiskPercent;
     if(g_totalAccountProfitPercent <= g_maxLossThreshold) {
         riskPercentForTrade = g_maxLossRisk;
@@ -361,7 +390,7 @@ def modificar_estrategia_benjamin(content, filename):
     double moneyToRisk = (initialBalance * riskPercentForTrade) / 100.0;
     VerboseLog("GESTION DE RIESGO: Calculando tamaño de lote. Usando riesgo de: ", DoubleToString(riskPercentForTrade, 2), "%. Dinero a arriesgar: ", DoubleToString(moneyToRisk, 2));
     
-    size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,moneyToRisk,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier,mmStep);"""
+    size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,moneyToRisk,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier);"""
 
     # Aplicar modificaciones
     target_for_inputs = (
@@ -376,19 +405,25 @@ def modificar_estrategia_benjamin(content, filename):
         target_for_oninit, on_init_addition + "\n\n   " + target_for_oninit
     )
 
-    original_lot_calc_line = 'size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,mmRiskedMoney,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier,mmStep);'
-    match = re.search(r"(\s*)" + re.escape(original_lot_calc_line), content)
-    if match:
-        indentation = match.group(1)
-        indented_lot_size_logic = "\n".join(
-            [
-                indentation + line if line.strip() else ""
-                for line in lot_size_calculation_logic.split("\n")
-            ]
-        )
-        content = content.replace(
-            indentation + original_lot_calc_line, indented_lot_size_logic
-        )
+    original_patterns = [
+        'size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,mmRiskedMoney,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier,mmStep);',
+        'size = sqMMFixedAmount("Current",ORDER_TYPE_BUY,openPrice,sl,mmRiskedMoney,mmDecimals,mmLotsIfNoMM,mmMaxLots,mmMultiplier);',
+        'size = sqMMFixedAmount("Current", ORDER_TYPE_BUY, openPrice, sl, mmRiskedMoney, mmDecimals, mmLotsIfNoMM, mmMaxLots, mmMultiplier, mmStep);',
+        'size = sqMMFixedAmount("Current", ORDER_TYPE_BUY, openPrice, sl, mmRiskedMoney, mmDecimals, mmLotsIfNoMM, mmMaxLots, mmMultiplier);'
+    ]
+    
+    replaced = False
+    for pattern in original_patterns:
+        if pattern in content:
+            match = re.search(r"(\s*)" + re.escape(pattern), content)
+            if match:
+                indentation = match.group(1)
+                indented_logic = "\n".join(
+                    [indentation + line for line in lot_size_calculation_logic.split("\n")]
+                )
+                content = content.replace(indentation + pattern, indented_logic)
+                replaced = True
+                break
 
     first_include_marker = "//+----------------------------- Include from"
     if first_include_marker in content:
@@ -573,6 +608,14 @@ def main():
         - ✅ Logging detallado para debugging
         - ✅ Validación de parámetros de entrada
         - ✅ Compatibilidad con múltiples símbolos
+        - ✅ **NUEVO**: Corrección de problemas con mmStep
+        - ✅ **NUEVO**: Mejor detección de patrones de código
+        
+        ### Problemas corregidos en esta versión:
+        - 🔧 Eliminado parámetro problemático `mmStep` de la función
+        - 🔧 Mejorada la detección de líneas de cálculo de lote
+        - 🔧 Agregado manejo automático del `SYMBOL_VOLUME_STEP`
+        - 🔧 Corregidos problemas de sintaxis MQL5
         
         ### Requisitos:
         - Los archivos deben tener la estructura estándar de StrategyQuant
